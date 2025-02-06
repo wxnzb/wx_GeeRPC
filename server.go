@@ -3,12 +3,14 @@
 package geerap
 
 import (
+	"My_Geerpc/codec"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"reflect"
+	"sync"
 )
 
 const Magicnumber = 0x3bef5c
@@ -93,25 +95,31 @@ func (s *Server) readRequest(c codec.Codec) (*Request, error) {
 }
 
 // 创建ServerCodec函数
+// ServerCodec方法用于处理客户端请求
 func (s *Server) ServerCodec(c codec.Codec) {
+	sending := new(sync.Mutex)
+	defer c.Close()
 	for {
-		if req, err := s.readRequest(c); err != nil {
+		req, err := s.readRequest(c)
+		if err != nil {
 			if req == nil {
 				break
 			} else { //对应上面的不应该
 				req.h.Error = err.Error()
-				s.sendResponse(c, req.h, nil)
+				s.sendResponse(c, req.h, nil, sending)
 				continue
 			}
 		}
-		//之前写成了c.h.Seq
+		//之前写成了c.h.Seq,你要始终记住此时的codec.Codec是*Gobcodec
 		req.replyv = reflect.ValueOf(fmt.Sprintf("geerpc resp: %d", req.h.Seq))
-		s.sendResponse(c, req.h, req.replyv.Interface())
+		s.sendResponse(c, req.h, req.replyv.Interface(), sending)
 	}
 }
 
 // 创建sendResponse函数
-func (s *Server) sendResponse(c *codec.Codec, h *codec.Header, body interface{}) {
+func (s *Server) sendResponse(c codec.Codec, h *codec.Header, body interface{}, sending *sync.Mutex) {
+	sending.Lock()
+	defer sending.Unlock()
 	if err := c.Write(h, body); err != nil {
 		log.Println("write response error:", err)
 	}
