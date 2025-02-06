@@ -89,31 +89,37 @@ func (s *Server) readRequest(c codec.Codec) (*Request, error) {
 	if err := c.ReadBody(req.argv.Interface()); err != nil { //go
 		log.Println("read body error:", err)
 		//不应该返回nil,因为req不为nil,有header
-		return nil, err
+		return &req, err
 	}
 	return &req, nil
 }
 
 // 创建ServerCodec函数
 // ServerCodec方法用于处理客户端请求
+var invaildRequest = struct{}{}
+
 func (s *Server) ServerCodec(c codec.Codec) {
 	sending := new(sync.Mutex)
+	wg := new(sync.WaitGroup)
 	defer c.Close()
 	for {
 		req, err := s.readRequest(c)
 		if err != nil {
 			if req == nil {
 				break
-			} else { //对应上面的不应该
+			} else {
 				req.h.Error = err.Error()
-				s.sendResponse(c, req.h, nil, sending)
+				//错误应该立即返回给客户端
+				s.sendResponse(c, req.h, invaildRequest, sending)
 				continue
 			}
 		}
 		//之前写成了c.h.Seq,你要始终记住此时的codec.Codec是*Gobcodec
+		wg.Add(1)
 		req.replyv = reflect.ValueOf(fmt.Sprintf("geerpc resp: %d", req.h.Seq))
-		s.sendResponse(c, req.h, req.replyv.Interface(), sending)
+		go s.sendHandle(c, req.h, req.replyv.Interface(), sending, wg)
 	}
+	wg.Wait()
 }
 
 // 创建sendResponse函数
@@ -123,4 +129,8 @@ func (s *Server) sendResponse(c codec.Codec, h *codec.Header, body interface{}, 
 	if err := c.Write(h, body); err != nil {
 		log.Println("write response error:", err)
 	}
+}
+func (s *Server) sendHandle(c codec.Codec, h *codec.Header, body interface{}, sending *sync.Mutex, wg *sync.WaitGroup) {
+	defer wg.Done()
+	s.sendResponse(c, h, body, sending)
 }
