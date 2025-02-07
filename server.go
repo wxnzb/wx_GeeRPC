@@ -1,6 +1,6 @@
 // 创建Option结构体
 // 创建默认Option结构体
-package geerap
+package geerpc
 
 import (
 	"My_Geerpc/codec"
@@ -60,7 +60,7 @@ func (s *Server) ServerConn(conn io.ReadWriteCloser) {
 		return
 	}
 	if opt.MagicNumber != Magicnumber {
-		log.Println("invalid magic number")
+		log.Printf("invalid magic number %x", opt.MagicNumber)
 		return
 	}
 	if opt.CodecType != "gob" {
@@ -79,19 +79,19 @@ type Request struct {
 
 // 创建readRequest函数
 func (s *Server) readRequest(c codec.Codec) (*Request, error) {
-	var h *codec.Header
-	if err := c.ReadHeader(h); err != nil {
+	var h codec.Header
+	if err := c.ReadHeader(&h); err != nil {
 		log.Println("read header error:", err)
 		return nil, err
 	}
-	req := Request{h: h}
+	req := &Request{h: &h}
 	req.argv = reflect.New(reflect.TypeOf(""))               //go
 	if err := c.ReadBody(req.argv.Interface()); err != nil { //go
 		log.Println("read body error:", err)
 		//不应该返回nil,因为req不为nil,有header
-		return &req, err
+		return req, err
 	}
-	return &req, nil
+	return req, nil
 }
 
 // 创建ServerCodec函数
@@ -117,6 +117,7 @@ func (s *Server) ServerCodec(c codec.Codec) {
 		//之前写成了c.h.Seq,你要始终记住此时的codec.Codec是*Gobcodec
 		wg.Add(1)
 		req.replyv = reflect.ValueOf(fmt.Sprintf("geerpc resp: %d", req.h.Seq))
+		log.Println(req.h, req.argv.Elem())
 		go s.sendHandle(c, req.h, req.replyv.Interface(), sending, wg)
 	}
 	wg.Wait()
