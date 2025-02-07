@@ -35,7 +35,7 @@ func NewServer() *Server {
 }
 func (s *Server) Accept(lis net.Listener) {
 	for {
-		conn, err := lis.Accept()
+		conn, err := lis.Accept() //fk.key
 		if err != nil {
 			log.Println("accept error:")
 		}
