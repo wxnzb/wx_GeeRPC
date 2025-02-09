@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -18,6 +19,8 @@ func startServer(addr chan string) {
 	geerpc.Accept(l) //fk.key
 }
 
+// 1
+//
 //	func main() {
 //		addr := make(chan string)
 //		go startServer(addr)
@@ -40,20 +43,48 @@ func startServer(addr chan string) {
 //		}
 //		conn.Close()
 //	}
+//
+// 2
+// func main() {
+// 	addr := make(chan string)
+// 	go startServer(addr)
+// 	time.Sleep(time.Second)
+// 	cl := geerpc.Dial("tcp", <-addr)
+// 	for i := 0; i < 5; i++ {
+// 		h := &codec.Header{
+// 			ServiceMethod: "wx.nzb",
+// 			Seq:           uint64(i),
+// 		}
+// 		args := fmt.Sprintf("geerpc req %d", h.Seq)
+// 		var reply string
+// 	_:
+// 		cl.Call(h.ServiceMethod, args, &reply)
+// 		log.Println("reply:", reply)
+// 	}
+// }
+
+// 3
 func main() {
 	addr := make(chan string)
 	go startServer(addr)
 	time.Sleep(time.Second)
 	cl := geerpc.Dial("tcp", <-addr)
+	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
-		h := &codec.Header{
-			ServiceMethod: "wx.nzb",
-			Seq:           uint64(i),
-		}
-		args := fmt.Sprintf("geerpc req %d", h.Seq)
-		var reply string
-	_:
-		cl.Call(h.ServiceMethod, args, &reply)
-		log.Println("reply:", reply)
+		wg.Add(1)
+		go func(i int) {
+			h := &codec.Header{
+				ServiceMethod: "wx.nzb",
+				Seq:           uint64(i),
+			}
+			//log.Println("i:", i)
+			args := fmt.Sprintf("geerpc req %d", h.Seq)
+			var reply string
+		_:
+			cl.Call(h.ServiceMethod, args, &reply)
+			log.Println("reply:", reply)
+			wg.Done()
+		}(i)
 	}
+	wg.Wait()
 }

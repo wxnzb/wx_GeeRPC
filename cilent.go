@@ -3,6 +3,8 @@ package geerpc
 import (
 	"My_Geerpc/codec"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"net"
 	"sync"
@@ -17,6 +19,7 @@ type Client struct {
 	shutdown bool       //出错强制关掉
 	closing  bool       //客户端主动关掉
 	mu       sync.Mutex //客户端发送多个信息给服务端，会用到上面的变量，他们在一个客户端实例中是共享的，因此用的时候需要加锁
+	sending  sync.Mutex
 	h        codec.Header
 }
 
@@ -31,8 +34,14 @@ type Call struct {
 
 // Client*的Close()方法
 // 关闭Client
-func (cl *Client) Close() {
-
+func (cl *Client) Close() error {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	if cl.closing {
+		return errors.New("client has been closed")
+	}
+	cl.closing = true
+	return cl.c.Close()
 }
 
 // Client*的IsAvailable()方法
@@ -98,6 +107,12 @@ func (cl *Client) receive() {
 			err = cl.c.ReadBody(nil)
 			continue
 		}
+		if h.Error != "" {
+			call.Error = fmt.Errorf(h.Error)
+			err = cl.c.ReadBody(nil)
+			call.done()
+			continue
+		}
 		if err := cl.c.ReadBody(call.Reply); err != nil {
 			call.Error = err
 		}
@@ -126,6 +141,9 @@ func (cl *Client) Go(servicemethod string, args, reply interface{}, done chan *C
 	return call
 }
 func (cl *Client) send(call *Call) {
+	//sending解决并发问题
+	cl.sending.Lock()
+	defer cl.sending.Unlock()
 	seq := cl.registerCall(call)
 	// var h codec.Header
 	// h.ServiceMethod = call.ServiceMethod
