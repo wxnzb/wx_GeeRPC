@@ -54,5 +54,6 @@ func main() {
 		var reply string
 	_:
 		cl.Call(h.ServiceMethod, args, &reply)
+		log.Println("reply:", reply)
 	}
 }
