@@ -6,6 +6,7 @@ import (
 	"My_Geerpc/codec"
 	"encoding/json"
 	"fmt"
+	"go/ast"
 	"io"
 	"log"
 	"net"
@@ -25,13 +26,63 @@ var DefaultOption = Option{
 	CodecType:   "gob",
 }
 
+type methodType struct {
+	Method reflect.Method
+	Argv   reflect.Type
+	Reply  reflect.Type
+}
+
 // 创见server结构体
 // 创建一个函数，来处理客户端连接
 // 创建默认server结构体,来处理默认的连接
-type Server struct{}
+type Server struct {
+	name     string
+	rv       reflect.Value
+	rt       reflect.Type
+	serthods map[string]*methodType
+}
 
-func NewServer() *Server {
-	return &Server{}
+// sevicemethod eg:wx.nzb,wx.jy...就是关于wx的方法func(w *wx)nzb(s string,i int)erroe{}
+func NewServer(smh interface{}) *Server {
+	s := new(Server)
+	//s.name=smh.(string)不能这样,为啥
+	s.name = reflect.Indirect(reflect.ValueOf(smh)).Type().Name()
+	//这个是必须的，他必须是Wx.nzb导出的才行
+	//Go 的 net/rpc 规范 中，小写的结构体不能注册方法，因为小写的结构体字段在包外是不可见的，无法被 RPC 调用。
+	if ast.IsExported(s.name) == false {
+		log.Fatalf("rpc server: %s is not a valid name", s.name)
+	}
+	s.rv = reflect.ValueOf(smh)
+	s.rt = reflect.TypeOf(smh)
+	NewMethods(s)
+	return s
+	//return &Server{}
+}
+func NewMethods(s *Server) {
+	s.serthods = make(map[string]*methodType)
+	for i := 0; i < s.rt.NumMethod(); i++ {
+		method := s.rt.Method(i)
+		if method.Type.NumIn() != 3 || method.Type.NumOut() != 1 {
+			continue
+		}
+		//方法里面的参数类型不能是自定义的小写，不能导出
+		if isExportedCan(method.Type.In(1)) || isExportedCan(method.Type.In(2)) {
+			continue
+		}
+		if method.Type.Out(0) != reflect.TypeOf((*error)(nil)) {
+			continue
+		}
+		s.serthods[method.Name] = &methodType{
+			Method: method, //其实我感觉不太需要这个呀
+			Argv:   method.Type.In(1),
+			Reply:  method.Type.In(2),
+		}
+		log.Printf("register method:%s.%s", s.name, method.Name)
+	}
+}
+func isExportedCan(t reflect.Type) bool {
+	//需要ast.IsExported(t.Name())吗
+	return ast.IsExported(t.Name()) || t.PkgPath() == ""
 }
 func (s *Server) Accept(lis net.Listener) {
 	for {
