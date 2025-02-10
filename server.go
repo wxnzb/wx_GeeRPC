@@ -37,11 +37,12 @@ type methodType struct {
 // 创建默认server结构体,来处理默认的连接
 type Server struct {
 	name     string
+	//要rv,rt有啥用阿
 	rv       reflect.Value
 	rt       reflect.Type
 	serthods map[string]*methodType
 }
-
+func 
 // sevicemethod eg:wx.nzb,wx.jy...就是关于wx的方法func(w *wx)nzb(s string,i int)erroe{}
 func NewServer(smh interface{}) *Server {
 	s := new(Server)
@@ -83,6 +84,15 @@ func NewMethods(s *Server) {
 func isExportedCan(t reflect.Type) bool {
 	//需要ast.IsExported(t.Name())吗
 	return ast.IsExported(t.Name()) || t.PkgPath() == ""
+}
+func (s *Server) Call(m *methodType, argv, reply reflect.Value) error {
+	f := m.Method.Func
+	returnvalues := f.Call([]reflect.Value{s.rv, argv, reply})
+	if errInter := returnvalues[0].Interface(); errInter != nil {
+		//return errInter(error)
+		return errInter.(error)
+	}
+	return nil
 }
 func (s *Server) Accept(lis net.Listener) {
 	for {
