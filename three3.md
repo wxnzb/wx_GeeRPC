@@ -22,3 +22,21 @@ func isExportedCan(t reflect.Type)bool{
 - t.PkgPath() == "" 只会出现在两种情况下：
 - 内置类型（int, string, bool 等）
 - 导出的类型（大写开头的 struct）
+## 5
+_assert(err==nil&&*Reply.Interface().(*int)==3,"Add(1,2) should return 3")
+- 不能写成*Reply==3，Reply是reflect.Value类型的
+- reflect.Value.Interface()方法的作用是将reflect.Value还原成普通的interface{}类型值，以便后续进行类型断言
+## 6
+func TestNewServer(t *testing.T){
+	var foo Foo
+	s:=NewServer(foo)
+	_assert(len(s.serthods)==1,"Foo has 1 methods")
+	MethodFunc:=s.serthods["Add"]
+	_assert(MethodFunc!=nil,"Foo has Add method")
+}
+- 函数里面的参数有什么用，我感觉都没用上，可以删除不写吗
+- 参数 t *testing.T 不能删除，它们是 Go 语言 testing 框架的标准写法,运行go test
+##  7
+    var reply reflect.Value //返回一定是个指针所以不用判断
+	reply = reflect.New(m.Reply.Elem())
+- 在Go语言中，变量声明和赋值应该在同一行进行，否则会违反代码风格指南
