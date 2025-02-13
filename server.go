@@ -5,11 +5,13 @@ package geerpc
 import (
 	"My_Geerpc/codec"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"reflect"
+	"strings"
 	"sync"
 )
 
@@ -29,8 +31,37 @@ var DefaultOption = Option{
 // 创建一个函数，来处理客户端连接
 // 创建默认server结构体,来处理默认的连接
 type Server struct {
+	serviceMap sync.Map
 }
 
+func (s *Server) Register(rvcr interface{}) error {
+	m := NewService(rvcr)
+	if _, ok := s.serviceMap.LoadOrStore(m.name, m); !ok {
+		return errors.New("rpc server:service already defined:" + m.name)
+	}
+	return nil
+}
+func Register(rvcr interface{}) error {
+	return DefaultServer.Register(rvcr)
+}
+func (s *Server) FindService(servicemethod string) (*Service, *methodType, error) {
+	dot := strings.LastIndex(servicemethod, ".")
+	if dot < 0 {
+		return nil, nil, errors.New("no . ,fomat erroe")
+	}
+	serviceName, methodName := servicemethod[:dot], servicemethod[dot+1:]
+	sv, ok := s.serviceMap.Load(serviceName)
+	if !ok {
+		return nil, nil, errors.New("can't find service ")
+	}
+	svi := sv.(*Service)
+	method := svi.serthods[methodName]
+	if method == nil {
+		return nil, nil, errors.New("can't find method ")
+	}
+	return svi, method, nil
+
+}
 func NewServer() *Server {
 	return &Server{}
 }
