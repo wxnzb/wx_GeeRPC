@@ -40,3 +40,10 @@ func TestNewServer(t *testing.T){
     var reply reflect.Value //返回一定是个指针所以不用判断
 	reply = reflect.New(m.Reply.Elem())
 - 在Go语言中，变量声明和赋值应该在同一行进行，否则会违反代码风格指南
+## 8
+svi := sv.(*Service)
+- sv是interface{}类型，不能直接用*Service类型转换，需要先断言成*Service类型，然后再用*Service类型转换成*Service类型，.不能省略
+## 9
+argvi := req.argv.Interface()
+req.argv 是一个 reflect.Value 类型，它表示某个变量的值。
+req.argv.Interface() 将 reflect.Value 转换成 interface{}，即获取其实际的 Go 值。

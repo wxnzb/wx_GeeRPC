@@ -6,7 +6,6 @@ import (
 	"My_Geerpc/codec"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -107,23 +106,36 @@ func (s *Server) ServerConn(conn io.ReadWriteCloser) {
 type Request struct {
 	h            *codec.Header
 	argv, replyv reflect.Value
+	svc          *Service
+	mtype        *methodType
 }
 
 // 创建readRequest函数
-func (s *Server) readRequest(c codec.Codec) (*Request, error) {
+func (s *Server) readRequest(c codec.Codec) (req *Request, err error) {
 	var h codec.Header
 	if err := c.ReadHeader(&h); err != nil {
 		log.Println("read header error:", err)
 		return nil, err
 	}
-	req := &Request{h: &h}
-	req.argv = reflect.New(reflect.TypeOf(""))               //go
-	if err := c.ReadBody(req.argv.Interface()); err != nil { //go
-		log.Println("read body error:", err)
-		//不应该返回nil,因为req不为nil,有header
-		return req, err
+	req = &Request{h: &h}
+	// req.argv = reflect.New(reflect.TypeOf(""))               //go
+	// if err := c.ReadBody(req.argv.Interface()); err != nil { //go
+	// 	log.Println("read body error:", err)
+	// 	//不应该返回nil,因为req不为nil,有header
+	// 	return req, err
+	// }
+	req.svc, req.mtype, err = s.FindService(h.ServiceMethod)
+	req.argv = req.mtype.NewArgv()
+	req.replyv = req.mtype.NewReply()
+	argvi := req.argv.Interface()
+	if req.argv.Type().Kind() != reflect.Ptr {
+		argvi = req.argv.Addr().Interface()
 	}
-	return req, nil
+	if err = c.ReadBody(argvi); err != nil {
+		log.Println("read body error:", err)
+		return
+	}
+	return
 }
 
 // 创建ServerCodec函数
@@ -148,9 +160,9 @@ func (s *Server) ServerCodec(c codec.Codec) {
 		}
 		//之前写成了c.h.Seq,你要始终记住此时的codec.Codec是*Gobcodec
 		wg.Add(1)
-		req.replyv = reflect.ValueOf(fmt.Sprintf("geerpc resp: %d", req.h.Seq))
-		log.Println(req.h, req.argv.Elem())
-		go s.sendHandle(c, req.h, req.replyv.Interface(), sending, wg)
+		//req.replyv = reflect.ValueOf(fmt.Sprintf("geerpc resp: %d", req.h.Seq))
+		//log.Println(req.h, req.argv.Elem())
+		go s.sendHandle(c, req.h, req, sending, wg)
 	}
 	wg.Wait()
 }
@@ -163,7 +175,12 @@ func (s *Server) sendResponse(c codec.Codec, h *codec.Header, body interface{}, 
 		log.Println("write response error:", err)
 	}
 }
-func (s *Server) sendHandle(c codec.Codec, h *codec.Header, body interface{}, sending *sync.Mutex, wg *sync.WaitGroup) {
+func (s *Server) sendHandle(c codec.Codec, h *codec.Header, req *Request, sending *sync.Mutex, wg *sync.WaitGroup) {
 	defer wg.Done()
-	s.sendResponse(c, h, body, sending)
+	if err := req.svc.Call(req.mtype, req.argv, req.replyv); err != nil {
+		req.h.Error = err.Error()
+		s.sendResponse(c, h, invaildRequest, sending)
+	}
+	s.sendResponse(c, h, req.replyv.Interface(), sending)
+	//s.sendResponse(c, h, body, sending)
 }

@@ -2,68 +2,36 @@ package main
 
 import (
 	geerpc "My_Geerpc"
-	"My_Geerpc/codec"
-	"fmt"
 	"log"
 	"net"
 	"sync"
 	"time"
 )
 
+type Foo int
+type Args struct {
+	num1, num2 int
+}
+
+func (f Foo) Add(args Args, reply *int) error {
+	*reply = args.num1 + args.num2
+	return nil
+}
+
 // 创建startSrever函数
 // 创建main函数
 func startServer(addr chan string) {
+	var foo Foo
+	err := geerpc.Register(foo)
+	if err != nil {
+		log.Println("register error:", err)
+	}
 	l, _ := net.Listen("tcp", ":0") //fk.key
 	addr <- l.Addr().String()       //fk.key
 	log.Println("Server started on ", l.Addr())
 	geerpc.Accept(l) //fk.key
 }
 
-// 1
-//
-//	func main() {
-//		addr := make(chan string)
-//		go startServer(addr)
-//		time.Sleep(time.Second)
-//		conn, _ := net.Dial("tcp", <-addr) //fk.key
-//		//这里是把信息通过流conn使得服务器进行接收
-//		_ = json.NewEncoder(conn).Encode(geerpc.DefaultOption)
-//		c := codec.NewGobCodec(conn)
-//		for i := 0; i < 5; i++ {
-//			h := &codec.Header{
-//				ServiceMethod: "wx.nzb",
-//				Seq:           uint64(i),
-//			}
-//			_ = c.Write(h, fmt.Sprintf("geerpc req %d", h.Seq))
-//			//感觉下面这些不太需要，只是为了检测
-//			_ = c.ReadHeader(h)
-//			var reply string
-//			_ = c.ReadBody(&reply)
-//			log.Println("reply:", reply)
-//		}
-//		conn.Close()
-//	}
-//
-// 2
-// func main() {
-// 	addr := make(chan string)
-// 	go startServer(addr)
-// 	time.Sleep(time.Second)
-// 	cl := geerpc.Dial("tcp", <-addr)
-// 	for i := 0; i < 5; i++ {
-// 		h := &codec.Header{
-// 			ServiceMethod: "wx.nzb",
-// 			Seq:           uint64(i),
-// 		}
-// 		args := fmt.Sprintf("geerpc req %d", h.Seq)
-// 		var reply string
-// 	_:
-// 		cl.Call(h.ServiceMethod, args, &reply)
-// 		log.Println("reply:", reply)
-// 	}
-// }
-
-// 3
 func main() {
 	addr := make(chan string)
 	go startServer(addr)
@@ -73,16 +41,10 @@ func main() {
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func(i int) {
-			h := &codec.Header{
-				ServiceMethod: "wx.nzb",
-				Seq:           uint64(i),
-			}
-			//log.Println("i:", i)
-			args := fmt.Sprintf("geerpc req %d", h.Seq)
-			var reply string
-		_:
-			cl.Call(h.ServiceMethod, args, &reply)
-			log.Println("reply:", reply)
+			args := &Args{num1: i, num2: i * i}
+			var reply int
+			cl.Call("Foo.Add", args, &reply)
+			log.Printf("%d + %d = %d\n", args.num1, args.num2, reply)
 			wg.Done()
 		}(i)
 	}
