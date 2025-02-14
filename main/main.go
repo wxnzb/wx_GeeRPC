@@ -10,11 +10,11 @@ import (
 
 type Foo int
 type Args struct {
-	num1, num2 int
+	Num1, Num2 int
 }
 
 func (f Foo) Add(args Args, reply *int) error {
-	*reply = args.num1 + args.num2
+	*reply = args.Num1 + args.Num2
 	return nil
 }
 
@@ -41,10 +41,10 @@ func main() {
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func(i int) {
-			args := &Args{num1: i, num2: i * i}
+			args := &Args{Num1: i, Num2: i * i}
 			var reply int
 			cl.Call("Foo.Add", args, &reply)
-			log.Printf("%d + %d = %d\n", args.num1, args.num2, reply)
+			log.Printf("%d + %d = %d\n", args.Num1, args.Num2, reply)
 			wg.Done()
 		}(i)
 	}
