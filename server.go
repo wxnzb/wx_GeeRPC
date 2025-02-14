@@ -35,7 +35,7 @@ type Server struct {
 
 func (s *Server) Register(rvcr interface{}) error {
 	m := NewService(rvcr)
-	if _, ok := s.serviceMap.LoadOrStore(m.name, m); !ok {
+	if _, dup := s.serviceMap.LoadOrStore(m.name, m); dup {
 		return errors.New("rpc server:service already defined:" + m.name)
 	}
 	return nil
@@ -125,6 +125,9 @@ func (s *Server) readRequest(c codec.Codec) (req *Request, err error) {
 	// 	return req, err
 	// }
 	req.svc, req.mtype, err = s.FindService(h.ServiceMethod)
+	if err != nil {
+		return
+	}
 	req.argv = req.mtype.NewArgv()
 	req.replyv = req.mtype.NewReply()
 	argvi := req.argv.Interface()

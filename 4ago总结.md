@@ -1,0 +1,30 @@
+- 按照整个流程走一边
+- 在main.go中
+- 定义Foo类型，实现了Add()方法
+- 在startServer函数中通过geerpc.Register(&foo)函数中的NewService最终返回一个*Service对象，这里面就包含Foo类型的所有方法以及方法的参数和返回值，将他存在服务器端的一个map中
+- 然后就是基本的服务端客户端建立连接
+- 先是服务端
+- l, _ := net.Listen("tcp", ":0")，服务端监听端口
+- addr <- l.Addr().String()将端口地址存到管道中
+- geerpc.Accept(l)，服务端开始监听看是否有客户端连接，最主要的服务端函数，在这个函数里面将客户端传来的信息conn通过go s.ServerConn(conn)进行处理
+- 客户端
+- cl := geerpc.Dial("tcp", <-addr)客户端关键
+- 这里的Dial函数先通过conn, _ :=net.Dial(network, address)与服务端进行连接，然后调用NewCilent(conn, opt)，这里先将opt默认&DefaultOption
+- 在NewCilent中先将opt通过json编码conn传给服务器，让服务器用json解码知道之后读头体用的编码格式，调用NewCilentCodec函数参数中调用了根据opt的创建Codec的函数
+- 之前说服务端进行到（geerpc.Accept(l)，服务端开始监听看是否有客户端连接，最主要的服务端函数，在这个函数里面将客户端传来的信息conn通过go s.ServerConn(conn)进行处理）这一步，现在客户端将opt传给服务端，服务端就开始调用ServerConn(conn)函数
+- ServerConn(conn)函数通过json解析opt，判断客户端发送的opt格式是否正确，之后调用s.ServerCodec(codec.NewCodecFuncMap[opt.CodecType](conn))，他的参数建立的Codec实例和客户端用的编解码个是一样
+- 在ServerCodec函数中，通过for循环一直等待客户端发送头体
+- 在NewCilentCodec函数中，构建了Client结构体实例，在这最终返回了*Client,其中开线程go cl.receive()，他在客户端是处理消息的关键,1
+- 这个receive只是分析，现在还没用到
+- 在receive()函数中，通过cl.c也就是Codec实例（这个在上面NewCilent中都已经实现好了服务端方发送的conn与编码方式的联系）解码服务器发来的conn读取头体，没有出错的话就ok,取消调之前因为发送信息给服务端而创建的seq和call(call := cl.removeCall(h.Seq);call.done())
+- 调用cl.Call("Foo.Add", args, &reply)函数
+- 在Call()函数中调用Go函数，他比call函数多了一个管道参数
+- 在Go函数中，构建Call结构体实例，cl.send(call)
+- 在send函数中，先是调用registerCall函数，将call存在Client实例的map中，然后将call的信息一个一个赋给Client实例的Header结构体中，然后调用cl.c.Write(&cl.h, call.Args)，将信息发送给服务端
+- 现在又该服务端开始表演了
+- 服务端之前已经进行到（在ServerCodec函数中，通过for循环一直等待客户端发送头体），现在客户端发送消息，服务端可以继续
+- 调用for循环中的readRequest函数中，c.ReadHeader(&h)读取客户端发的头，并通过s.FindService(h.ServiceMethod)函数找到*Service和*methodType,就像现在他是“Foo.Add",server的map找到*Service,通过*Service里面的map[Add]找到*methodType，然后调用c.ReadBody(body)函数，将客户端发来的信息读取到body中，也就是args := &Args{num1: i, num2: i * i}
+- for循环中的readRequest函数调用完后，没问题的话会调用go s.sendHandle(c, req.h, req, sending, wg)
+- 在sendHandle函数中，调用req.svc.Call(req.mtype, req.argv, req.replyv),将结构存在replyv里面，然后接着调用s.sendResponse(c, h, req.replyv.Interface(), sending)函数
+- 在s.sendResponse函数中，调用c.Write(h, body)将信息发送给客户端
+- 接着客户端就用到了上面的receive()函数

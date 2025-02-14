@@ -22,7 +22,7 @@ func (f Foo) Add(args Args, reply *int) error {
 // 创建main函数
 func startServer(addr chan string) {
 	var foo Foo
-	err := geerpc.Register(foo)
+	err := geerpc.Register(&foo)
 	if err != nil {
 		log.Println("register error:", err)
 	}
