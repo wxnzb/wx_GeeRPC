@@ -2,6 +2,7 @@ package main
 
 import (
 	geerpc "My_Geerpc"
+	"context"
 	"log"
 	"net"
 	"sync"
@@ -36,14 +37,15 @@ func main() {
 	addr := make(chan string)
 	go startServer(addr)
 	time.Sleep(time.Second)
-	cl := geerpc.Dial("tcp", <-addr)
+	cl, _ := geerpc.Dial("tcp", <-addr)
 	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func(i int) {
 			args := &Args{Num1: i, Num2: i * i}
 			var reply int
-			cl.Call("Foo.Add", args, &reply)
+			ctx, _ := context.WithTimeout(context.Background(), time.Second)
+			cl.Call(ctx, "Foo.Add", args, &reply)
 			log.Printf("%d + %d = %d\n", args.Num1, args.Num2, reply)
 			wg.Done()
 		}(i)

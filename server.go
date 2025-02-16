@@ -6,24 +6,29 @@ import (
 	"My_Geerpc/codec"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 )
 
 const Magicnumber = 0x3bef5c
 
 type Option struct {
-	MagicNumber int
-	CodecType   string
+	MagicNumber    int
+	CodecType      string
+	ConnectTimeout time.Duration
+	HandleTimeout  time.Duration
 }
 
 var DefaultOption = Option{
-	MagicNumber: Magicnumber,
-	CodecType:   "gob",
+	MagicNumber:    Magicnumber,
+	CodecType:      "gob",
+	ConnectTimeout: time.Second * 10,
 }
 
 // 创见server结构体
@@ -165,7 +170,7 @@ func (s *Server) ServerCodec(c codec.Codec) {
 		wg.Add(1)
 		//req.replyv = reflect.ValueOf(fmt.Sprintf("geerpc resp: %d", req.h.Seq))
 		//log.Println(req.h, req.argv.Elem())
-		go s.sendHandle(c, req.h, req, sending, wg)
+		go s.sendHandle(c, req.h, req, sending, wg, 2) //这里先随便设置一下
 	}
 	wg.Wait()
 }
@@ -178,12 +183,34 @@ func (s *Server) sendResponse(c codec.Codec, h *codec.Header, body interface{}, 
 		log.Println("write response error:", err)
 	}
 }
-func (s *Server) sendHandle(c codec.Codec, h *codec.Header, req *Request, sending *sync.Mutex, wg *sync.WaitGroup) {
+
+// 这里只判断处理call是否超时，sent的作用是为了让sendResponse执行完后在退出程序
+func (s *Server) sendHandle(c codec.Codec, h *codec.Header, req *Request, sending *sync.Mutex, wg *sync.WaitGroup, timeout time.Duration) {
 	defer wg.Done()
-	if err := req.svc.Call(req.mtype, req.argv, req.replyv); err != nil {
-		req.h.Error = err.Error()
-		s.sendResponse(c, h, invaildRequest, sending)
+	called := make(chan struct{})
+	sent := make(chan struct{})
+	go func() {
+		err := req.svc.Call(req.mtype, req.argv, req.replyv) //处理可能超时
+		called <- struct{}{}
+		if err != nil {
+			req.h.Error = err.Error()
+			s.sendResponse(c, h, invaildRequest, sending) //发送信息
+			sent <- struct{}{}
+			return
+		}
+		s.sendResponse(c, h, req.replyv.Interface(), sending)
+		sent <- struct{}{}
+	}()
+	if timeout == 0 {
+		<-called
+		<-sent
 	}
-	s.sendResponse(c, h, req.replyv.Interface(), sending)
+	select {
+	case <-time.After(timeout):
+		req.h.Error = fmt.Sprintf("rpc server: request timein: %d", timeout)
+		s.sendResponse(c, h, invaildRequest, sending)
+	case <-called:
+		<-sent
+	}
 	//s.sendResponse(c, h, body, sending)
 }

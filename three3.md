@@ -47,3 +47,13 @@ svi := sv.(*Service)
 argvi := req.argv.Interface()
 req.argv 是一个 reflect.Value 类型，它表示某个变量的值。
 req.argv.Interface() 将 reflect.Value 转换成 interface{}，即获取其实际的 Go 值。
+## 10
+if _, dup := s.serviceMap.LoadOrStore(m.name, m); dup
+- 这里不是！dup
+- 查找键 m.name 是否已经存在：如果存在，返回已存储的值，不更新。如果不存在，存入 m，然后返回 m
+## 11
+- 运行出现了这个问题encode body error: gob: type main.Args has no exported fields
+type Args struct {
+	num1, num2 int
+}这样定义不行，num必须大写，为啥
+- gob 只能序列化可导出的字段（即 首字母大写）。如果 Args 结构体的字段是 小写，它们不会被 gob 处理，导致 encode body error
