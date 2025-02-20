@@ -5,6 +5,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -27,17 +28,17 @@ func startServer(addr chan string) {
 	if err != nil {
 		log.Println("register error:", err)
 	}
-	l, _ := net.Listen("tcp", ":0") //fk.key
-	addr <- l.Addr().String()       //fk.key
+	l, _ := net.Listen("tcp", ":9999") //fk.key
+	addr <- l.Addr().String()          //fk.key
 	log.Println("Server started on ", l.Addr())
-	geerpc.Accept(l) //fk.key
+	//geerpc.Accept(l) //fk.key
+	geerpc.HandleHttp()
+	_ = http.Serve(l, nil)
 }
 
-func main() {
-	addr := make(chan string)
-	go startServer(addr)
+func call(addr chan string) {
 	time.Sleep(time.Second)
-	cl, _ := geerpc.Dial("tcp", <-addr)
+	cl, _ := geerpc.DialHttp("tcp", <-addr)
 	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
@@ -51,4 +52,9 @@ func main() {
 		}(i)
 	}
 	wg.Wait()
+}
+func main() {
+	addr := make(chan string)
+	go call(addr)
+	startServer(addr)
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"net"
+	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -45,6 +47,8 @@ func startServer(addr chan string) {
 	log.Println("Server started on ", l.Addr())
 	Accept(l) //fk.key
 }
+
+// 是不是有病，这两个测试都过不了，恶心死我了
 func Test_call(t *testing.T) {
 	t.Parallel()
 	addr := make(chan string)
@@ -64,4 +68,29 @@ func Test_call(t *testing.T) {
 		err := cl.Call(context.Background(), "Bar.Timeout", 1, &reply)
 		_assert(err != nil && strings.Contains(err.Error(), "handle timeout"), "handle timeout")
 	})
+}
+
+// 最终证明 XDial 不仅可以支持 TCP，还可以用于 Unix Socket 连接，适用于本机的高效 IPC 通信！
+// Unix Socket 连接 中，通信不通过网络，而是通过本地的 Socket 文件，addr 就是这个文件的路径
+func Test_Xdial(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		ch := make(chan struct{})
+		addr := "/tmp/geerpc.sock"
+		go func() {
+			//为啥要删除
+			//在 Unix 系统中，Unix Socket 文件（/tmp/geerpc.sock）是持久化的，如果服务器进程上次运行崩溃或意外退出，Socket 文件可能还留在系统中。
+			//如果不删除，可能会失败
+			net.Listen("unix", addr)
+			_ = os.Remove(addr)
+			l, err := net.Listen("unix", addr)
+			if err != nil {
+				log.Fatal("listen error:", err)
+			}
+			ch <- struct{}{}
+			Accept(l)
+		}()
+		<-ch
+		_, err := XDial("unix@" + addr)
+		_assert(err == nil, "xdial error")
+	}
 }

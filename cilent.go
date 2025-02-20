@@ -2,12 +2,16 @@ package geerpc
 
 import (
 	"My_Geerpc/codec"
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -107,14 +111,44 @@ func dialtimeout(f newClientFunc, network, address string, opts ...*Option) (cl 
 }
 
 // 创建一个客户端实例
+func DialHttp(network, address string, opts ...*Option) (cl *Client, err error) {
+	return dialtimeout(NewHttpCilent, network, address, opts...)
+}
 func Dial(network, address string, opts ...*Option) (cl *Client, err error) {
-	return dialtimeout(NewCilent, network, address, opts...)
+	return dialtimeout(NewClient, network, address, opts...)
 }
 
-func NewCilent(conn net.Conn, opt *Option) (*Client, error) {
+// 创建一个新的HTTP客户端
+func NewHttpCilent(conn net.Conn, opt *Option) (*Client, error) {
+	_, _ = io.WriteString(conn, fmt.Sprintf("CONNECT %s HTTP/1.0\n\n", defaultRpcPath))
+	resp, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: "CONNECT"})
+	if err == nil && resp.Status == "connected" {
+		return NewClient(conn, opt)
+	}
+	if err == nil {
+		err = errors.New("unexpected HTTP response: " + resp.Status)
+	}
+	return nil, err
+}
+func NewClient(conn net.Conn, opt *Option) (*Client, error) {
 	_ = json.NewEncoder(conn).Encode(opt)
 
 	return NewCilentCodec(codec.NewCodecFuncMap[opt.CodecType](conn), opt), nil
+}
+
+// http@10.0.0.1:7001
+func XDial(rpcaddr string, opts ...*Option) (*Client, error) {
+	parts := strings.Split(rpcaddr, "@")
+	if len(parts) != 2 {
+		return nil, errors.New("rpc client err:wrong @ nums")
+	}
+	protocol, addr := parts[0], parts[1]
+	switch protocol {
+	case "http":
+		return DialHttp("tcp", addr, opts...)
+	default:
+		return Dial("tcp", addr, opts...)
+	}
 }
 
 //	func NewCilent(conn net.Conn, opt *Option) (*Client, error) {

@@ -222,9 +222,10 @@ const (
 	defaultRpcPath = "/_geerpc_"
 )
 
-func (s *Server) ServeHttp(w http.ResponseWriter, r *http.Request) {
+// 可以替换Accept
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "CONNECT" {
-		w.Header().Set("Content-Type", "text/plain;charset=uft-8")
+		w.Header().Set("Content-Type", "text/plain;charset=utf-8")
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		_, _ = io.WriteString(w, "405 must connect")
 		return
@@ -238,9 +239,9 @@ func (s *Server) ServeHttp(w http.ResponseWriter, r *http.Request) {
 	s.ServerConn(conn)
 
 }
-func (s *Server) HandleHttp() {
+func (s *Server) HandleHttP() {
 	http.Handle(defaultRpcPath, s)
 }
 func HandleHttp() {
-	DefaultServer.HandleHttp()
+	DefaultServer.HandleHttP()
 }
