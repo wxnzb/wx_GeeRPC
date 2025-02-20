@@ -74,6 +74,10 @@ func dialtimeout(f newClientFunc, network, address string, opts ...*Option) (cl 
 	//这个现在是用不上的，因为Option用的就是json
 	if len(opts) == 1 {
 		opt = opts[0]
+		opt.MagicNumber = DefaultOption.MagicNumber
+		if opt.CodecType == "" {
+			opt.CodecType = DefaultOption.CodecType
+		}
 	}
 	if len(opts) > 1 {
 		log.Fatalf("Dial: wrong number of arguments, want 1, got %v", len(opts))
@@ -106,10 +110,21 @@ func dialtimeout(f newClientFunc, network, address string, opts ...*Option) (cl 
 func Dial(network, address string, opts ...*Option) (cl *Client, err error) {
 	return dialtimeout(NewCilent, network, address, opts...)
 }
+
 func NewCilent(conn net.Conn, opt *Option) (*Client, error) {
 	_ = json.NewEncoder(conn).Encode(opt)
+
 	return NewCilentCodec(codec.NewCodecFuncMap[opt.CodecType](conn), opt), nil
 }
+
+//	func NewCilent(conn net.Conn, opt *Option) (*Client, error) {
+//		_ = json.NewEncoder(conn).Encode(opt)
+//		codecFunc, ok := codec.NewCodecFuncMap[opt.CodecType]
+//		if !ok {
+//			return nil, fmt.Errorf("invalid codec type: %s", opt.CodecType)
+//		}
+//		return NewCilentCodec(codecFunc(conn), opt), nil
+//	}
 func NewCilentCodec(c codec.Codec, opt *Option) *Client {
 	cl := &Client{
 		seq:     1,

@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -104,7 +105,7 @@ func (s *Server) ServerConn(conn io.ReadWriteCloser) {
 		return
 	}
 	//直接调用可能有问题，需要改
-	s.ServerCodec(codec.NewCodecFuncMap[opt.CodecType](conn))
+	s.ServerCodec(codec.NewCodecFuncMap[opt.CodecType](conn), &opt)
 }
 
 // 定义request结构体
@@ -150,7 +151,7 @@ func (s *Server) readRequest(c codec.Codec) (req *Request, err error) {
 // ServerCodec方法用于处理客户端请求
 var invaildRequest = struct{}{}
 
-func (s *Server) ServerCodec(c codec.Codec) {
+func (s *Server) ServerCodec(c codec.Codec, opt *Option) {
 	sending := new(sync.Mutex)
 	wg := new(sync.WaitGroup)
 	defer c.Close()
@@ -170,7 +171,7 @@ func (s *Server) ServerCodec(c codec.Codec) {
 		wg.Add(1)
 		//req.replyv = reflect.ValueOf(fmt.Sprintf("geerpc resp: %d", req.h.Seq))
 		//log.Println(req.h, req.argv.Elem())
-		go s.sendHandle(c, req.h, req, sending, wg, 2) //这里先随便设置一下
+		go s.sendHandle(c, req.h, req, sending, wg, opt.HandleTimeout) //这里先随便设置一下
 	}
 	wg.Wait()
 }
@@ -213,4 +214,33 @@ func (s *Server) sendHandle(c codec.Codec, h *codec.Header, req *Request, sendin
 		<-sent
 	}
 	//s.sendResponse(c, h, body, sending)
+}
+
+// 加入Https
+const (
+	connected      = "200 Connected to Gee RPc"
+	defaultRpcPath = "/_geerpc_"
+)
+
+func (s *Server) ServeHttp(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "CONNECT" {
+		w.Header().Set("Content-Type", "text/plain;charset=uft-8")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_, _ = io.WriteString(w, "405 must connect")
+		return
+	}
+	conn, _, err := w.(http.Hijacker).Hijack()
+	if err != nil {
+		log.Print("rcp hijacking:", r.RemoteAddr, ":", err.Error())
+		return
+	}
+	_, _ = io.WriteString(conn, "HTTP/1.1"+connected+"\n\n")
+	s.ServerConn(conn)
+
+}
+func (s *Server) HandleHttp() {
+	http.Handle(defaultRpcPath, s)
+}
+func HandleHttp() {
+	DefaultServer.HandleHttp()
 }

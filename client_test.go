@@ -50,7 +50,7 @@ func Test_call(t *testing.T) {
 	addr := make(chan string)
 	go startServer(addr)
 	Addr := <-addr
-	time.Sleep(time.Second)
+	time.Sleep(time.Second) //这里为啥要停顿一秒，上面不是已经阻塞等待了吗
 	t.Run("客户端超时", func(t *testing.T) {
 		cl, _ := Dial("tcp", Addr)
 		var reply int
@@ -58,10 +58,10 @@ func Test_call(t *testing.T) {
 		err := cl.Call(ctx, "Bar.Timeout", 1, &reply)
 		_assert(err != nil && strings.Contains(err.Error(), ctx.Err().Error()), "client timeout")
 	})
-	t.Run("客户端超时", func(t *testing.T) {
+	t.Run("服务器超时", func(t *testing.T) {
 		cl, _ := Dial("tcp", Addr, &Option{HandleTimeout: time.Second})
 		var reply int
 		err := cl.Call(context.Background(), "Bar.Timeout", 1, &reply)
-		_assert(err != nil && strings.Contains(err.Error(), "sever timeout"), "sever timeout")
+		_assert(err != nil && strings.Contains(err.Error(), "handle timeout"), "handle timeout")
 	})
 }
