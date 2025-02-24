@@ -223,6 +223,7 @@ const (
 )
 
 // 可以替换Accept
+// HTTP 服务器已经封装好了 for + Accept()
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "CONNECT" {
 		w.Header().Set("Content-Type", "text/plain;charset=utf-8")

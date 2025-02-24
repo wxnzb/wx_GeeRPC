@@ -39,6 +39,9 @@ type Call struct {
 	Seq           uint64 //我感觉这个最后加上是因为Call那里要是出现超时
 }
 
+// 记住，给接口弄实例的时候，最好加一个这个看是否这个结构体都实现了这个实例，其实我感觉也可以不加
+var _ io.Closer = (*Client)(nil)
+
 // Client*的Close()方法
 // 关闭Client
 func (cl *Client) Close() error {
