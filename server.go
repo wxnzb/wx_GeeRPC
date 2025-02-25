@@ -208,7 +208,7 @@ func (s *Server) sendHandle(c codec.Codec, h *codec.Header, req *Request, sendin
 	}
 	select {
 	case <-time.After(timeout):
-		req.h.Error = fmt.Sprintf("rpc server: request timein: %d", timeout)
+		req.h.Error = fmt.Sprintf("rpc server: request handle timeout: expect within %s", timeout)
 		s.sendResponse(c, h, invaildRequest, sending)
 	case <-called:
 		<-sent
@@ -224,20 +224,33 @@ const (
 
 // 可以替换Accept
 // HTTP 服务器已经封装好了 for + Accept()
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "CONNECT" {
-		w.Header().Set("Content-Type", "text/plain;charset=utf-8")
+func (server *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	// if r.Method != "CONNECT" {
+	// 	w.Header().Set("Content-Type", "text/plain;charset=utf-8")
+	// 	w.WriteHeader(http.StatusMethodNotAllowed)
+	// 	_, _ = io.WriteString(w, "405 must CONNECT\n")
+	// 	return
+	// }
+	// conn, _, err := w.(http.Hijacker).Hijack()
+	// if err != nil {
+	// 	log.Print("rcp hijacking:", r.RemoteAddr, ":", err.Error())
+	// 	return
+	// }
+	// _, _ = io.WriteString(conn, "HTTP/1.0 "+connected+"\n\n")
+	// s.ServerConn(conn)
+	if req.Method != "CONNECT" {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		_, _ = io.WriteString(w, "405 must connect")
+		_, _ = io.WriteString(w, "405 must CONNECT\n")
 		return
 	}
 	conn, _, err := w.(http.Hijacker).Hijack()
 	if err != nil {
-		log.Print("rcp hijacking:", r.RemoteAddr, ":", err.Error())
+		log.Print("rpc hijacking ", req.RemoteAddr, ": ", err.Error())
 		return
 	}
-	_, _ = io.WriteString(conn, "HTTP/1.1"+connected+"\n\n")
-	s.ServerConn(conn)
+	_, _ = io.WriteString(conn, "HTTP/1.0 "+connected+"\n\n")
+	server.ServerConn(conn)
 
 }
 func (s *Server) HandleHttP() {

@@ -55,6 +55,8 @@ func Test_call(t *testing.T) {
 	go startServer(addr)
 	Addr := <-addr
 	time.Sleep(time.Second) //这里为啥要停顿一秒，上面不是已经阻塞等待了吗
+	//ok,我知道了，·因为Accept(l) //fk.key在addr <- l.Addr().String() 后面
+	//第一个是在Call()那里，他发送以及主要服务端处理还有返回看是否超过
 	t.Run("客户端超时", func(t *testing.T) {
 		cl, _ := Dial("tcp", Addr)
 		var reply int
@@ -80,7 +82,6 @@ func Test_Xdial(t *testing.T) {
 			//为啥要删除
 			//在 Unix 系统中，Unix Socket 文件（/tmp/geerpc.sock）是持久化的，如果服务器进程上次运行崩溃或意外退出，Socket 文件可能还留在系统中。
 			//如果不删除，可能会失败
-			net.Listen("unix", addr)
 			_ = os.Remove(addr)
 			l, err := net.Listen("unix", addr)
 			if err != nil {
@@ -91,6 +92,9 @@ func Test_Xdial(t *testing.T) {
 		}()
 		<-ch
 		_, err := XDial("unix@" + addr)
+		if err != nil {
+			log.Fatal("xdial error:", err)
+		}
 		_assert(err == nil, "xdial error")
 	}
 }

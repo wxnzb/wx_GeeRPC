@@ -61,10 +61,6 @@ func (cl *Client) IsAvailable() bool {
 	return !cl.shutdown && !cl.closing
 }
 
-//Client*的terminateCall()方法
-// func (cl *Client)terminateCall(){
-
-// }
 type result struct {
 	cl  *Client
 	err error
@@ -89,7 +85,10 @@ func dialtimeout(f newClientFunc, network, address string, opts ...*Option) (cl 
 	if len(opts) > 1 {
 		log.Fatalf("Dial: wrong number of arguments, want 1, got %v", len(opts))
 	}
-	conn, _ := net.DialTimeout(network, address, opt.ConnectTimeout)
+	conn, err := net.DialTimeout(network, address, opt.ConnectTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to dial: %v", err)
+	}
 	defer func() {
 		if cl == nil {
 			conn.Close()
@@ -98,6 +97,9 @@ func dialtimeout(f newClientFunc, network, address string, opts ...*Option) (cl 
 	res := make(chan result)
 	go func() {
 		cl, err := f(conn, opt)
+		if err != nil {
+			log.Printf("client creation failed: %v", err)
+		}
 		//这里我本来不想创建result的，忽略掉error,但是我不知道指针可以传进管道吗
 		res <- result{cl: cl, err: err}
 	}()
@@ -109,6 +111,9 @@ func dialtimeout(f newClientFunc, network, address string, opts ...*Option) (cl 
 	case <-time.After(opt.ConnectTimeout):
 		return nil, fmt.Errorf("rpc client: connect timeout: %d", opt.ConnectTimeout)
 	case s := <-res:
+		if s.cl == nil {
+			return nil, fmt.Errorf("client creation failed: %v", s.err)
+		}
 		return s.cl, s.err
 	}
 }
@@ -123,9 +128,21 @@ func Dial(network, address string, opts ...*Option) (cl *Client, err error) {
 
 // 创建一个新的HTTP客户端
 func NewHttpCilent(conn net.Conn, opt *Option) (*Client, error) {
+	// _, _ = io.WriteString(conn, fmt.Sprintf("CONNECT %s HTTP/1.0\n\n", defaultRpcPath))
+	// resp, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: "CONNECT"})
+	// if err == nil && resp.Status == connected {
+	// 	return NewClient(conn, opt)
+	// }
+	// if err == nil {
+	// 	err = errors.New("unexpected HTTP response: " + resp.Status)
+	// }
+	// return nil, err
 	_, _ = io.WriteString(conn, fmt.Sprintf("CONNECT %s HTTP/1.0\n\n", defaultRpcPath))
+
+	// Require successful HTTP response
+	// before switching to RPC protocol.
 	resp, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: "CONNECT"})
-	if err == nil && resp.Status == "connected" {
+	if err == nil && resp.Status == connected {
 		return NewClient(conn, opt)
 	}
 	if err == nil {
@@ -134,7 +151,23 @@ func NewHttpCilent(conn net.Conn, opt *Option) (*Client, error) {
 	return nil, err
 }
 func NewClient(conn net.Conn, opt *Option) (*Client, error) {
-	_ = json.NewEncoder(conn).Encode(opt)
+	// if opt == nil {
+	// 	return nil, fmt.Errorf("opt cannot be nil")
+	// }
+	// _ = json.NewEncoder(conn).Encode(opt)
+
+	// return NewCilentCodec(codec.NewCodecFuncMap[opt.CodecType](conn), opt), nil
+	if conn == nil {
+		return nil, fmt.Errorf("connection cannot be nil")
+	}
+	if opt == nil {
+		return nil, fmt.Errorf("opt cannot be nil")
+	}
+
+	// 确保 opt 不为 nil 后继续
+	if err := json.NewEncoder(conn).Encode(opt); err != nil {
+		return nil, fmt.Errorf("failed to encode option: %v", err)
+	}
 
 	return NewCilentCodec(codec.NewCodecFuncMap[opt.CodecType](conn), opt), nil
 }
@@ -150,7 +183,8 @@ func XDial(rpcaddr string, opts ...*Option) (*Client, error) {
 	case "http":
 		return DialHttp("tcp", addr, opts...)
 	default:
-		return Dial("tcp", addr, opts...)
+		//我他瞄把protocol写成了"tcp"就说unix这个咋通不过去
+		return Dial(protocol, addr, opts...)
 	}
 }
 
@@ -183,33 +217,48 @@ func (cl *Client) receive() {
 			break
 		}
 		call := cl.removeCall(h.Seq)
-		if call == nil {
+		switch {
+		case call == nil:
 			err = cl.c.ReadBody(nil)
-			continue
-		}
-		if h.Error != "" {
+		case h.Error != "":
 			call.Error = fmt.Errorf(h.Error)
 			err = cl.c.ReadBody(nil)
 			call.done()
-			continue
+		default:
+			if err := cl.c.ReadBody(call.Reply); err != nil {
+				call.Error = err
+			}
+			call.done()
 		}
-		if err := cl.c.ReadBody(call.Reply); err != nil {
-			call.Error = err
-		}
-		call.done()
+
 	}
+	cl.terminateCall(err)
 }
 func (call *Call) done() {
 	call.Done <- call
 }
 
+// Client*的terminateCall()方法
+func (cl *Client) terminateCall(err error) {
+	//这两把锁的意思到底是什么呀
+	cl.sending.Lock()
+	defer cl.sending.Unlock()
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	for _, call := range cl.pending {
+		call.Error = err
+		call.done()
+	}
+}
+
 // 开始写关于发送信息给服务器
 func (cl *Client) Call(ctx context.Context, ServiceMethod string, args, reply interface{}) error {
-	call := <-cl.Go(ServiceMethod, args, reply, make(chan *Call, 1)).Done
+	call := cl.Go(ServiceMethod, args, reply, make(chan *Call, 1))
 	select {
 	case <-ctx.Done():
 		cl.removeCall(call.Seq)
 		return errors.New("rpc client: call failed: " + ctx.Err().Error())
+		//这里刚开始看的还不明白，其实就是你通过go将消息发给服务端，然后一直等，直到在receive函数中，call.done()函数将call传给call.done通道，此时受到了服务端发送过来的reply,此时<-call.done里面才不为空，不会堵塞
 	case <-call.Done:
 		return call.Error
 	}
