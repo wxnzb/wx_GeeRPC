@@ -7,3 +7,5 @@
 ## 3
 - 这里的 http.Handle(defaultRpcPath, s) 让 Go 内置的 HTTP 服务器将 /_geerpc_ 这个路径的请求交给 s（即 Server 类型的对象）处理。
 Server 结构体实现了 http.Handler 接口，因此 ServeHTTP() 方法会被调用，所以客户端发送http的CONNECT在defaultRpcPath通道请求后会直接调用ServeHTTP()函数进行交互
+## 4
+- 当参数为 0 时，表示不使用任何默认的日志格式信息（如时间、文件名等），只打印日志内容本身

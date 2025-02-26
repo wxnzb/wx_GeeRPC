@@ -2,8 +2,10 @@ package xclient
 
 import (
 	"errors"
+	"math"
 	"math/rand"
 	"sync"
+	"time"
 )
 
 type SelectMode int
@@ -24,6 +26,15 @@ type Discovery interface {
 	Updata([]string) error
 	Get(mode SelectMode) (string, error)
 	GetAll() ([]string, error)
+}
+
+func NewDiscovery(servers []string) *MultServers {
+	d := &MultServers{
+		servers: servers,
+		r:       rand.New(rand.NewSource(time.Now().UnixNano())),
+	}
+	d.index = d.r.Intn(math.MaxInt32 - 1)
+	return d
 }
 
 // 实现Discovery接口
