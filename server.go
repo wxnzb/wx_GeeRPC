@@ -76,6 +76,7 @@ func (s *Server) Accept(lis net.Listener) {
 		if err != nil {
 			log.Println("accept error:")
 		}
+
 		go s.ServerConn(conn)
 	}
 }
@@ -120,7 +121,10 @@ type Request struct {
 func (s *Server) readRequest(c codec.Codec) (req *Request, err error) {
 	var h codec.Header
 	if err := c.ReadHeader(&h); err != nil {
-		log.Println("read header error:", err)
+		//log.Println("read header error:", err)
+		if err != io.EOF && err != io.ErrUnexpectedEOF {
+			log.Println("rpc server: read header error:", err)
+		}
 		return nil, err
 	}
 	req = &Request{h: &h}
@@ -205,6 +209,7 @@ func (s *Server) sendHandle(c codec.Codec, h *codec.Header, req *Request, sendin
 	if timeout == 0 {
 		<-called
 		<-sent
+		return
 	}
 	select {
 	case <-time.After(timeout):

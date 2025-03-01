@@ -66,40 +66,42 @@ type result struct {
 	err error
 }
 
+// 还是创建一个parseOptions函数吧
+func parseOptions(opts ...*Option) (*Option, error) {
+	if len(opts) == 0 || opts[0] == nil {
+		return &DefaultOption, nil
+	}
+	if len(opts) != 1 {
+		log.Fatalf("Dial: wrong number of arguments, want 1, got %v", len(opts))
+	}
+	opt := opts[0]
+	opt.MagicNumber = DefaultOption.MagicNumber
+	if opt.CodecType == "" {
+		opt.CodecType = DefaultOption.CodecType
+	}
+	return opt, nil
+}
+
 // 为了写client_test.go,这里先将NewCilent替换一下可改变时间的
 type newClientFunc func(conn net.Conn, opt *Option) (*Client, error)
 
 func dialtimeout(f newClientFunc, network, address string, opts ...*Option) (cl *Client, err error) {
-	var opt *Option
-	if len(opts) == 0 || opts[0] == nil {
-		opt = &DefaultOption
-	}
-	//这个现在是用不上的，因为Option用的就是json
-	if len(opts) == 1 {
-		opt = opts[0]
-		opt.MagicNumber = DefaultOption.MagicNumber
-		if opt.CodecType == "" {
-			opt.CodecType = DefaultOption.CodecType
-		}
-	}
-	if len(opts) > 1 {
-		log.Fatalf("Dial: wrong number of arguments, want 1, got %v", len(opts))
+	opt, err := parseOptions(opts...)
+	if err != nil {
+		return nil, err
 	}
 	conn, err := net.DialTimeout(network, address, opt.ConnectTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial: %v", err)
 	}
 	defer func() {
-		if cl == nil {
+		if err != nil {
 			conn.Close()
 		}
 	}()
 	res := make(chan result)
 	go func() {
 		cl, err := f(conn, opt)
-		if err != nil {
-			log.Printf("client creation failed: %v", err)
-		}
 		//这里我本来不想创建result的，忽略掉error,但是我不知道指针可以传进管道吗
 		res <- result{cl: cl, err: err}
 	}()
@@ -111,7 +113,7 @@ func dialtimeout(f newClientFunc, network, address string, opts ...*Option) (cl 
 	case <-time.After(opt.ConnectTimeout):
 		return nil, fmt.Errorf("rpc client: connect timeout: %d", opt.ConnectTimeout)
 	case s := <-res:
-		if s.cl == nil {
+		if s.cl == nil || s.err != nil {
 			return nil, fmt.Errorf("client creation failed: %v", s.err)
 		}
 		return s.cl, s.err
@@ -201,7 +203,7 @@ func (cl *Client) receive() {
 	for err == nil {
 		var h codec.Header
 		if err = cl.c.ReadHeader(&h); err != nil {
-			log.Println("rpc client: read header error:", err)
+			//log.Println("rpc client: read header error:", err)
 			break
 		}
 		call := cl.removeCall(h.Seq)

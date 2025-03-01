@@ -36,10 +36,7 @@ func startServer(addr chan string) {
 	_ = s.Register(&foo)
 	addr <- l.Addr().String() //fk.key
 	log.Println("Server started on ", l.Addr())
-	//这两步不应该和geerpc.Accept(l)一样吗
 	s.Accept(l) //fk.key
-	//geerpc.HandleHttp()
-	//_ = http.Serve(l, nil)
 }
 
 func call(addr1, addr2 string) {
@@ -65,7 +62,7 @@ func call(addr1, addr2 string) {
 }
 func broadcast(addr1, addr2 string) {
 	d := xclient.NewDiscovery([]string{"tcp@" + addr1, "tcp@" + addr2})
-	xc := xclient.Newxc(d, xclient.RandomSelect, nil)
+	xc := xclient.Newxc(d, xclient.RoundRobinSelect, nil)
 	defer func() { xc.Close() }()
 	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
@@ -81,16 +78,16 @@ func broadcast(addr1, addr2 string) {
 	wg.Wait()
 }
 func main() {
-	ch1 := make(chan string)
-	ch2 := make(chan string)
-	startServer(ch1)
-	print("1")
-	startServer(ch2)
-	// addr1 := <-ch1
-	// addr2 := <-ch2
-	// time.Sleep(time.Second)
-	// call(addr1, addr2)
-	// broadcast(addr1, addr2)
+	ch1 := make(chan string, 1)
+	ch2 := make(chan string, 1)
+	//记得加go，我就说在一只阻塞，真是符了
+	go startServer(ch1)
+	go startServer(ch2)
+	addr1 := <-ch1
+	addr2 := <-ch2
+	time.Sleep(time.Second)
+	call(addr1, addr2)
+	broadcast(addr1, addr2)
 }
 
 // 分类看是调用那个

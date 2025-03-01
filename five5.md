@@ -9,3 +9,21 @@
 Server 结构体实现了 http.Handler 接口，因此 ServeHTTP() 方法会被调用，所以客户端发送http的CONNECT在defaultRpcPath通道请求后会直接调用ServeHTTP()函数进行交互
 ## 4
 - 当参数为 0 时，表示不使用任何默认的日志格式信息（如时间、文件名等），只打印日志内容本身
+## 5
+- func dialtimeout(f newClientFunc, network, address string, opts ...*Option) (cl *Client, err error) {
+	var opt *Option
+	if len(opts) == 0 || opts[0] == nil {
+		opt = &DefaultOption
+	}
+	//这个现在是用不上的，因为Option用的就是json
+	if len(opts) == 1 {
+		opt = opts[0]
+		opt.MagicNumber = DefaultOption.MagicNumber
+		if opt.CodecType == "" {
+			opt.CodecType = DefaultOption.CodecType
+		}
+	}
+	if len(opts) > 1 {
+		log.Fatalf("Dial: wrong number of arguments, want 1, got %v", len(opts))
+	}
+- 原来这个函数一直有问题，问题在于dialtimeout(f , network, address)和dialtimeout(f , network, address，nil)这个调用是不一样的，第一个len(opts)==0而第二个len(opts)==1,所以给切片传入nil也是算的

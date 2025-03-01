@@ -4,6 +4,7 @@ package xclient
 import (
 	geerpc "My_Geerpc"
 	"context"
+	"fmt"
 	"io"
 	"reflect"
 	"sync"
@@ -45,15 +46,19 @@ func (xc *XClient) dial(rpcaddr string) (*geerpc.Client, error) {
 	xc.mu.Lock()
 	defer xc.mu.Unlock()
 	client, ok := xc.clients[rpcaddr]
-	if !ok && client.IsAvailable() {
+	if ok && !client.IsAvailable() {
 		_ = client.Close()
 		delete(xc.clients, rpcaddr)
 		client = nil
 	}
 	if client == nil {
-		client, err := geerpc.XDial(rpcaddr, xc.opt)
+		var err error
+		client, err = geerpc.XDial(rpcaddr, xc.opt)
 		if err != nil {
 			return nil, err
+		}
+		if client == nil { // 确保 client 不是 nil
+			return nil, fmt.Errorf("XDial returned nil client for %s", rpcaddr)
 		}
 		xc.clients[rpcaddr] = client
 	}
