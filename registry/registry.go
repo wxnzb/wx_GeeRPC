@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -45,7 +46,7 @@ func (r *GeeRegistry) Registry(addr string) {
 }
 
 // 返回仓库中存在的服务器地址
-func (r *GeeRegistry) Get() []string {
+func (r *GeeRegistry) aliveServers() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var s []string
@@ -62,7 +63,8 @@ func (r *GeeRegistry) Get() []string {
 }
 func (r *GeeRegistry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
-	//case "GET":
+	case "GET":
+		w.Header().Set("Wu-Geerpc-Servers", strings.Join(r.aliveServers(), ","))
 	case "SET":
 		addr := req.Header.Get("Wu-Geerpc-Server")
 		if addr == "" {
@@ -97,7 +99,7 @@ func SendHeartBeat(register, addr string) error {
 	//创建http客户端
 	httpClient := &http.Client{}
 	//构造http请求
-	req, _ := http.NewRequest(addr, register, nil)
+	req, _ := http.NewRequest("SET", register, nil)
 	//设置http请求头
 	req.Header.Set("Wu-Geerpc-Server", addr)
 	//发送http请求
