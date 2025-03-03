@@ -2,10 +2,12 @@ package main
 
 import (
 	geerpc "My_Geerpc"
+	"My_Geerpc/registry"
 	"My_Geerpc/xclient"
 	"context"
 	"log"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -25,43 +27,45 @@ func (f Foo) Sleep(args Args, reply *int) error {
 	return nil
 }
 
+func startRegistry(wg *sync.WaitGroup) {
+	l, _ := net.Listen("tcp", ":9999")
+	registry.HandleHTTP()
+	wg.Done()
+	_ = http.Serve(l, nil)
+}
+
 // 创建startSrever函数
 // 创建main函数
 // startServer函数用于启动服务器
-func startServer(addr chan string) {
+func startServer(registryaddr string, wg *sync.WaitGroup) {
 	l, _ := net.Listen("tcp", ":0") //fk.key
 	//声明一个Foo类型的变量
 	var foo Foo
 	s := geerpc.NewServer()
 	_ = s.Register(&foo)
-	addr <- l.Addr().String() //fk.key
-	log.Println("Server started on ", l.Addr())
+	registry.HeartBeat(registryaddr, "tcp@"+l.Addr().String(), 0)
+	//log.Println("Server started on ", l.Addr())
+	wg.Done()
 	s.Accept(l) //fk.key
 }
 
-func call(addr1, addr2 string) {
-	d := xclient.NewDiscovery([]string{"tcp@" + addr1, "tcp@" + addr2})
+func call(registryaddr string) {
+	d := xclient.NewGeeRegistryDiscovery(registryaddr, 0)
 	xc := xclient.Newxc(d, xclient.RandomSelect, nil)
 	defer func() { xc.Close() }()
-	// time.Sleep(time.Second)
-	// cl, _ := geerpc.DialHttp("tcp", <-addr)
 	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func(i int) {
 			args := &Args{Num1: i, Num2: i * i}
 			foo(xc, context.Background(), "call", "Foo.Add", args)
-			// 		var reply int
-			// 		ctx, _ := context.WithTimeout(context.Background(), time.Second)
-			// 		cl.Call(ctx, "Foo.Add", args, &reply)
-			// 		log.Printf("%d + %d = %d\n", args.Num1, args.Num2, reply)
 			wg.Done()
 		}(i)
 	}
 	wg.Wait()
 }
-func broadcast(addr1, addr2 string) {
-	d := xclient.NewDiscovery([]string{"tcp@" + addr1, "tcp@" + addr2})
+func broadcast(registryaddr string) {
+	d := xclient.NewGeeRegistryDiscovery(registryaddr, 0)
 	xc := xclient.Newxc(d, xclient.RoundRobinSelect, nil)
 	defer func() { xc.Close() }()
 	var wg sync.WaitGroup
@@ -78,16 +82,18 @@ func broadcast(addr1, addr2 string) {
 	wg.Wait()
 }
 func main() {
-	ch1 := make(chan string, 1)
-	ch2 := make(chan string, 1)
-	//记得加go，我就说在一只阻塞，真是符了
-	go startServer(ch1)
-	go startServer(ch2)
-	addr1 := <-ch1
-	addr2 := <-ch2
+	registryaddr := "http://localhost:9999/_geerpc_/registry"
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go startRegistry(&wg)
+	wg.Wait()
+	wg.Add(2)
+	go startServer(registryaddr, &wg)
+	go startServer(registryaddr, &wg)
+	wg.Wait()
 	time.Sleep(time.Second)
-	call(addr1, addr2)
-	broadcast(addr1, addr2)
+	call(registryaddr)
+	broadcast(registryaddr)
 }
 
 // 分类看是调用那个

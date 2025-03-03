@@ -20,8 +20,8 @@ type ServerItem struct {
 }
 
 const (
-	defaultRegistryPath = "/_geerpc_/registy"
-	defaultTimeout      = 5 * time.Second
+	defaultRegistryPath = "/_geerpc_/registry"
+	defaultTimeout      = 5 * time.Minute
 )
 
 func New(timeout time.Duration) *GeeRegistry {
@@ -61,11 +61,14 @@ func (r *GeeRegistry) aliveServers() []string {
 	sort.Strings(s)
 	return s
 }
+
+// 监听到了就自动启动//现在他为啥不进行这个函数，符了
 func (r *GeeRegistry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case "GET":
 		w.Header().Set("Wu-Geerpc-Servers", strings.Join(r.aliveServers(), ","))
-	case "SET":
+	case "POST":
+
 		addr := req.Header.Get("Wu-Geerpc-Server")
 		if addr == "" {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -76,30 +79,33 @@ func (r *GeeRegistry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
-func (r *GeeRegistry) HandleHttp(defaultregistrypath string) {
+func (r *GeeRegistry) HandleHTTP(defaultregistrypath string) {
+	//注册http服务器
 	http.Handle(defaultRegistryPath, r)
 	log.Println("rpc registry on", defaultregistrypath)
 }
-func HandleHttp() {
-	DefaultRegistry.HandleHttp(defaultRegistryPath)
+func HandleHTTP() {
+	DefaultRegistry.HandleHTTP(defaultRegistryPath)
 }
 func HeartBeat(register, addr string, duration time.Duration) {
 	if duration == 0 {
 		duration = defaultTimeout - time.Minute*time.Duration(1)
 	}
 	var err error
-	err = SendHeartBeat(register, addr)
-	for err == nil {
-		<-time.After(duration)
-		err = SendHeartBeat(register, addr)
-	}
+	err = sendHeartBeat(register, addr)
+	go func() {
+		for err == nil {
+			<-time.After(duration)
+			err = sendHeartBeat(register, addr)
+		}
+	}()
 }
-func SendHeartBeat(register, addr string) error {
-	log.Println(addr, "send heart beat to registry", register)
+func sendHeartBeat(registry, addr string) error {
+	log.Println(addr, "send heart beat to registry", registry)
 	//创建http客户端
 	httpClient := &http.Client{}
 	//构造http请求
-	req, _ := http.NewRequest("SET", register, nil)
+	req, _ := http.NewRequest("POST", registry, nil)
 	//设置http请求头
 	req.Header.Set("Wu-Geerpc-Server", addr)
 	//发送http请求
